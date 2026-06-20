@@ -641,36 +641,6 @@
   <div class="lock-setup-note" id="familyCodeStatus"></div>
 </div>
 
-<!-- ============ LOCK SCREEN ============ -->
-<div id="lockScreen">
-  <div class="lock-orb">
-    <svg viewBox="0 0 24 24" fill="none" stroke="#06201c" stroke-width="2"><path d="M12 2c-3 4-6 7-6 11a6 6 0 0012 0c0-4-3-7-6-11z"/></svg>
-  </div>
-  <div>
-    <div class="lock-title display" style="text-align:center;">Diário Renal</div>
-    <div class="lock-sub" id="lockSub">Crie um PIN de 4 dígitos para proteger os dados da criança</div>
-  </div>
-  <div class="pin-dots" id="pinDots">
-    <div class="pin-dot"></div><div class="pin-dot"></div><div class="pin-dot"></div><div class="pin-dot"></div>
-  </div>
-  <div class="lock-error" id="lockError"></div>
-  <div class="pin-pad" id="pinPad">
-    <button class="pin-key" data-k="1">1</button>
-    <button class="pin-key" data-k="2">2</button>
-    <button class="pin-key" data-k="3">3</button>
-    <button class="pin-key" data-k="4">4</button>
-    <button class="pin-key" data-k="5">5</button>
-    <button class="pin-key" data-k="6">6</button>
-    <button class="pin-key" data-k="7">7</button>
-    <button class="pin-key" data-k="8">8</button>
-    <button class="pin-key" data-k="9">9</button>
-    <div></div>
-    <button class="pin-key" data-k="0">0</button>
-    <button class="pin-key ghost" data-k="del">⌫</button>
-  </div>
-  <div class="lock-setup-note" id="lockNote"></div>
-</div>
-
 <!-- ============ APP ============ -->
 <div id="app">
 
@@ -969,10 +939,7 @@
     <div class="field-hint" style="margin-top:6px;">Compartilhe o código de família com quem mais vai registrar (ex: cônjuge), usando o mesmo código no aparelho dela/dele em "Trocar código de família" ou na primeira abertura do app. Quem tem o código vê e edita os mesmos dados.</div>
 
     <div class="section-head" style="padding:24px 0 8px;"><div class="section-title">Segurança</div></div>
-    <div class="settings-item" onclick="startPinChange()">
-      <div><div class="settings-lbl">Alterar PIN</div><div class="settings-val">Proteção de acesso ao app (só neste aparelho)</div></div>
-      <span style="color:var(--text-faint);">›</span>
-    </div>
+    <div class="field-hint" style="margin-bottom:6px;">O acesso aos dados é protegido pelo código de família (acima). Qualquer pessoa com esse código pode ver e editar os registros — guarde-o como guardaria uma senha.</div>
 
     <div class="section-head" style="padding:24px 0 8px;"><div class="section-title">Dados</div></div>
     <div class="settings-item" onclick="exportData()">
@@ -1394,7 +1361,6 @@ const REFERENCE_IMAGES = {
 
 /* ===================== STORAGE LAYER ===================== */
 const DB_KEY = 'nephroDiary_v1';
-const PIN_KEY = 'nephroDiary_localPin'; // PIN is per-device, never synced to the family cloud
 let DB = {
   profile: { name:'', dob:'', dx:'ssns', photo:'' },
   protocol: { urine:'', acid:'', time:'', note:'' },
@@ -1451,8 +1417,9 @@ function submitFamilyCode(){
 }
 
 function beginAppBoot(){
-  // Family code confirmed locally; proceed to the existing PIN gate.
-  initLock();
+  // Family code confirmed locally; the family code is the only access
+  // layer now — go straight into the app (no device PIN).
+  unlockApp();
 }
 
 function changeFamilyCode(){
@@ -1553,137 +1520,13 @@ function fmtDateLong(s){
   return d.toLocaleDateString('pt-BR',{day:'2-digit',month:'long',year:'numeric'});
 }
 
-/* ===================== PIN LOCK ===================== */
-let pinBuffer = '';
+/* ===================== STATE ===================== */
 let urineMedChoices = {}; // { medId: 'taken' | 'skipped' }
-let pinMode = 'enter'; // 'setup' | 'confirm' | 'enter' | 'change-old' | 'change-new'
-let pinTemp = '';
 
-async function initLock(){
-  await loadDB();
-  const localPin = getLocalPin();
-  if(!localPin){
-    pinMode = 'setup';
-    document.getElementById('lockSub').textContent = 'Crie um PIN de 4 dígitos para proteger os dados da criança';
-    document.getElementById('lockNote').textContent = '';
-  } else {
-    pinMode = 'enter';
-    document.getElementById('lockSub').textContent = 'Digite seu PIN para entrar';
-  }
-  document.querySelectorAll('.pin-key').forEach(k=>{
-    k.addEventListener('click', ()=> handleKey(k.dataset.k));
-  });
-}
-
-function getLocalPin(){
-  try{ return localStorage.getItem(PIN_KEY); }catch(e){ return null; }
-}
-function setLocalPin(pin){
-  try{ localStorage.setItem(PIN_KEY, pin); }catch(e){}
-}
-
-function handleKey(k){
-  document.getElementById('lockError').textContent = '';
-  if(k === 'del'){ pinBuffer = pinBuffer.slice(0,-1); renderDots(); return; }
-  if(pinBuffer.length >= 4) return;
-  pinBuffer += k;
-  renderDots();
-  if(pinBuffer.length === 4){ setTimeout(()=>processPin(), 150); }
-}
-
-function renderDots(){
-  const dots = document.querySelectorAll('.pin-dot');
-  dots.forEach((d,i)=>{ d.classList.toggle('filled', i < pinBuffer.length); });
-}
-
-function shakeDots(){
-  document.querySelectorAll('.pin-dot').forEach(d=>{
-    d.classList.add('shake');
-    setTimeout(()=>d.classList.remove('shake'), 400);
-  });
-}
-
-function processPin(){
-  if(pinMode === 'setup'){
-    pinTemp = pinBuffer;
-    pinBuffer = '';
-    renderDots();
-    pinMode = 'confirm';
-    document.getElementById('lockSub').textContent = 'Confirme o PIN';
-    return;
-  }
-  if(pinMode === 'confirm'){
-    if(pinBuffer === pinTemp){
-      setLocalPin(pinBuffer);
-      unlockApp();
-    } else {
-      document.getElementById('lockError').textContent = 'Os PINs não coincidem. Tente de novo.';
-      shakeDots();
-      pinBuffer=''; pinTemp=''; renderDots();
-      pinMode = 'setup';
-      document.getElementById('lockSub').textContent = 'Crie um PIN de 4 dígitos';
-    }
-    return;
-  }
-  if(pinMode === 'enter'){
-    if(pinBuffer === getLocalPin()){
-      unlockApp();
-    } else {
-      document.getElementById('lockError').textContent = 'PIN incorreto';
-      shakeDots();
-      pinBuffer=''; renderDots();
-    }
-    return;
-  }
-  if(pinMode === 'change-old'){
-    if(pinBuffer === getLocalPin()){
-      pinBuffer=''; renderDots();
-      pinMode = 'change-new';
-      document.getElementById('lockSub').textContent = 'Digite o novo PIN';
-    } else {
-      document.getElementById('lockError').textContent = 'PIN atual incorreto';
-      shakeDots();
-      pinBuffer=''; renderDots();
-    }
-    return;
-  }
-  if(pinMode === 'change-new'){
-    pinTemp = pinBuffer;
-    pinBuffer=''; renderDots();
-    pinMode = 'change-confirm';
-    document.getElementById('lockSub').textContent = 'Confirme o novo PIN';
-    return;
-  }
-  if(pinMode === 'change-confirm'){
-    if(pinBuffer === pinTemp){
-      setLocalPin(pinBuffer);
-      showToast('PIN alterado com sucesso');
-      unlockApp();
-    } else {
-      document.getElementById('lockError').textContent = 'Não coincide. Tente de novo.';
-      shakeDots();
-      pinBuffer=''; pinTemp=''; renderDots();
-      pinMode = 'change-old';
-      document.getElementById('lockSub').textContent = 'Digite o PIN atual';
-    }
-    return;
-  }
-}
-
-function startPinChange(){
-  document.getElementById('lockScreen').style.display = 'flex';
-  document.getElementById('app').classList.remove('visible');
-  pinMode = 'change-old';
-  pinBuffer = '';
-  renderDots();
-  document.getElementById('lockSub').textContent = 'Digite o PIN atual';
-  document.getElementById('lockError').textContent = '';
-}
-
-function unlockApp(){
-  document.getElementById('lockScreen').style.display = 'none';
+async function unlockApp(){
+  document.getElementById('familyCodeScreen').style.display = 'none';
   document.getElementById('app').classList.add('visible');
-  pinBuffer=''; renderDots();
+  await loadDB();
   renderAll();
 }
 
