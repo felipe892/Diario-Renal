@@ -44,12 +44,13 @@
   ::-webkit-scrollbar-thumb{background:var(--border); border-radius:8px;}
 
   /* ===== Lock screen ===== */
-  #lockScreen{
+  #lockScreen, #familyCodeScreen{
     position:fixed; inset:0; z-index:1000;
     background: radial-gradient(ellipse at top, #131a26 0%, #0a0e14 60%);
     display:flex; flex-direction:column; align-items:center; justify-content:center;
     gap: 28px; padding: 24px;
   }
+  #familyCodeScreen{display:none;}
   .lock-orb{
     width:84px; height:84px; border-radius:50%;
     background: conic-gradient(from 180deg, var(--teal), var(--violet), var(--teal));
@@ -598,8 +599,47 @@
     .pin-key{width:56px; height:56px;}
   }
 </style>
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-app.js";
+  import { getFirestore, doc, getDoc, setDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
+
+  const firebaseConfig = {
+    apiKey: "AIzaSyAJTvz9GVNqUYg4reCWVboeL8BxhKLW9Bo",
+    authDomain: "diario-renal.firebaseapp.com",
+    projectId: "diario-renal",
+    storageBucket: "diario-renal.firebasestorage.app",
+    messagingSenderId: "370366359778",
+    appId: "1:370366359778:web:eeca34c70bf45d5a0516bb"
+  };
+
+  const fbApp = initializeApp(firebaseConfig);
+  const fbDb = getFirestore(fbApp);
+
+  // Expose a small bridge so the regular (non-module) script below can
+  // use Firestore without converting the whole app to ES modules.
+  window.FirebaseBridge = { doc, getDoc, setDoc, onSnapshot, db: fbDb };
+  window.dispatchEvent(new Event('firebase-ready'));
+</script>
 </head>
 <body>
+
+<!-- ============ FAMILY CODE SCREEN ============ -->
+<div id="familyCodeScreen">
+  <div class="lock-orb">
+    <svg viewBox="0 0 24 24" fill="none" stroke="#06201c" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 11-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 11-2.83-2.83l.06-.06A1.65 1.65 0 005 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 112.83-2.83l.06.06A1.65 1.65 0 008 4.6a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 112.83 2.83l-.06.06A1.65 1.65 0 0019 9c.18.34.45.62.78.8.32.18.7.27 1.07.27H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>
+  </div>
+  <div>
+    <div class="lock-title display" style="text-align:center;">Diário Renal</div>
+    <div class="lock-sub" id="familyCodeSub">Crie ou entre com o código compartilhado da família, para sincronizar os registros entre aparelhos</div>
+  </div>
+  <div class="field-group" style="width:100%; max-width:280px;">
+    <input type="text" id="familyCodeInput" placeholder="Ex: familia-silva-2026" autocapitalize="none" autocorrect="off">
+    <div class="field-hint" style="text-align:center;">Use o mesmo código em todos os aparelhos da família (mínimo 6 caracteres). Quem souber esse código acessa os dados — guarde com cuidado.</div>
+  </div>
+  <div class="lock-error" id="familyCodeError"></div>
+  <button class="btn btn-primary" style="width:100%; max-width:280px;" onclick="submitFamilyCode()">Continuar</button>
+  <div class="lock-setup-note" id="familyCodeStatus"></div>
+</div>
 
 <!-- ============ LOCK SCREEN ============ -->
 <div id="lockScreen">
@@ -917,9 +957,20 @@
     </div>
     <button class="btn btn-primary" onclick="saveProfile()">Salvar perfil</button>
 
+    <div class="section-head" style="padding:24px 0 8px;"><div class="section-title">Sincronização familiar</div></div>
+    <div class="settings-item" style="cursor:default;">
+      <div><div class="settings-lbl">Código de família</div><div class="settings-val" id="familyCodeDisplay">—</div></div>
+      <span id="syncStatusDot" style="width:8px; height:8px; border-radius:50%; background:var(--teal); flex-shrink:0;" title="Sincronizado"></span>
+    </div>
+    <div class="settings-item" onclick="changeFamilyCode()">
+      <div><div class="settings-lbl">Trocar código de família</div><div class="settings-val">Desconecta este aparelho do grupo atual</div></div>
+      <span style="color:var(--text-faint);">›</span>
+    </div>
+    <div class="field-hint" style="margin-top:6px;">Compartilhe o código de família com quem mais vai registrar (ex: cônjuge), usando o mesmo código no aparelho dela/dele em "Trocar código de família" ou na primeira abertura do app. Quem tem o código vê e edita os mesmos dados.</div>
+
     <div class="section-head" style="padding:24px 0 8px;"><div class="section-title">Segurança</div></div>
     <div class="settings-item" onclick="startPinChange()">
-      <div><div class="settings-lbl">Alterar PIN</div><div class="settings-val">Proteção de acesso ao app</div></div>
+      <div><div class="settings-lbl">Alterar PIN</div><div class="settings-val">Proteção de acesso ao app (só neste aparelho)</div></div>
       <span style="color:var(--text-faint);">›</span>
     </div>
 
@@ -1343,8 +1394,8 @@ const REFERENCE_IMAGES = {
 
 /* ===================== STORAGE LAYER ===================== */
 const DB_KEY = 'nephroDiary_v1';
+const PIN_KEY = 'nephroDiary_localPin'; // PIN is per-device, never synced to the family cloud
 let DB = {
-  pin: null,
   profile: { name:'', dob:'', dx:'ssns', photo:'' },
   protocol: { urine:'', acid:'', time:'', note:'' },
   treatmentPhase: 'none',
@@ -1355,7 +1406,72 @@ let DB = {
   clinic: []     // {id, date, weight, bp, status, exam, plan}
 };
 
-function loadDB(){
+/* ===================== FAMILY SYNC LAYER (Firestore) ===================== */
+const FAMILY_CODE_KEY = 'nephroDiary_familyCode';
+let familyCode = null;
+let fbReady = false;
+let fbUnsub = null;
+let saveDebounceTimer = null;
+let applyingRemoteUpdate = false; // guards against re-saving while applying an incoming snapshot
+
+window.addEventListener('firebase-ready', ()=>{ fbReady = true; });
+
+function normalizeFamilyCode(raw){
+  return (raw || '').trim().toLowerCase().replace(/\s+/g,'-');
+}
+
+function getStoredFamilyCode(){
+  try{ return localStorage.getItem(FAMILY_CODE_KEY); }catch(e){ return null; }
+}
+
+function initFamilyGate(){
+  const stored = getStoredFamilyCode();
+  if(stored){
+    familyCode = stored;
+    document.getElementById('familyCodeScreen').style.display = 'none';
+    beginAppBoot();
+  } else {
+    document.getElementById('familyCodeScreen').style.display = 'flex';
+  }
+}
+
+function submitFamilyCode(){
+  const raw = document.getElementById('familyCodeInput').value;
+  const code = normalizeFamilyCode(raw);
+  const errEl = document.getElementById('familyCodeError');
+  if(code.length < 6){
+    errEl.textContent = 'O código precisa ter pelo menos 6 caracteres.';
+    return;
+  }
+  errEl.textContent = '';
+  try{ localStorage.setItem(FAMILY_CODE_KEY, code); }catch(e){}
+  familyCode = code;
+  document.getElementById('familyCodeScreen').style.display = 'none';
+  beginAppBoot();
+}
+
+function beginAppBoot(){
+  // Family code confirmed locally; proceed to the existing PIN gate.
+  initLock();
+}
+
+function changeFamilyCode(){
+  if(!confirm('Trocar o código de família vai desconectar este aparelho dos dados sincronizados atuais. Use isso apenas se quiser começar um novo grupo de sincronização. Continuar?')) return;
+  try{ localStorage.removeItem(FAMILY_CODE_KEY); }catch(e){}
+  location.reload();
+}
+
+async function waitForFirebase(){
+  if(fbReady) return;
+  await new Promise(resolve=>{
+    if(fbReady) return resolve();
+    window.addEventListener('firebase-ready', resolve, { once:true });
+    setTimeout(resolve, 4000); // don't hang forever if something is wrong
+  });
+}
+
+async function loadDB(){
+  // 1) Load local cache immediately so the app is usable offline / fast.
   try{
     const raw = localStorage.getItem(DB_KEY);
     if(raw){
@@ -1363,14 +1479,69 @@ function loadDB(){
       DB = Object.assign(DB, parsed);
       DB.profile = Object.assign({ name:'', dob:'', dx:'ssns', photo:'' }, parsed.profile || {});
     }
-  }catch(e){ console.warn('Não foi possível carregar dados salvos (modo de visualização sem persistência?).', e); }
-  // normalize meds created before skippedDates/concentration existed
+  }catch(e){ console.warn('Não foi possível carregar o cache local.', e); }
   DB.meds = (DB.meds || []).map(m => Object.assign({ skippedDates: [], concentration: null }, m));
+
+  // 2) Connect to Firestore and subscribe to live updates for this family code.
+  if(!familyCode) return;
+  await waitForFirebase();
+  if(!fbReady || !window.FirebaseBridge) return;
+
+  const { doc, getDoc, onSnapshot, db } = window.FirebaseBridge;
+  const ref = doc(db, 'families', familyCode);
+
+  try{
+    const snap = await getDoc(ref);
+    if(snap.exists()){
+      const remote = snap.data();
+      applyingRemoteUpdate = true;
+      DB = Object.assign(DB, remote);
+      DB.profile = Object.assign({ name:'', dob:'', dx:'ssns', photo:'' }, remote.profile || {});
+      DB.meds = (DB.meds || []).map(m => Object.assign({ skippedDates: [], concentration: null }, m));
+      applyingRemoteUpdate = false;
+      try{ localStorage.setItem(DB_KEY, JSON.stringify(DB)); }catch(e){}
+    }
+  }catch(e){ console.warn('Não foi possível buscar dados na nuvem (seguindo com o cache local).', e); }
+
+  // Live sync: whenever the other device saves, this device updates too.
+  if(fbUnsub) fbUnsub();
+  fbUnsub = onSnapshot(ref, (snap)=>{
+    if(!snap.exists()) return;
+    const remote = snap.data();
+    applyingRemoteUpdate = true;
+    DB = Object.assign(DB, remote);
+    DB.profile = Object.assign({ name:'', dob:'', dx:'ssns', photo:'' }, remote.profile || {});
+    DB.meds = (DB.meds || []).map(m => Object.assign({ skippedDates: [], concentration: null }, m));
+    applyingRemoteUpdate = false;
+    try{ localStorage.setItem(DB_KEY, JSON.stringify(DB)); }catch(e){}
+    renderAll();
+    showSyncIndicator();
+  }, (err)=>{ console.warn('Sincronização em tempo real indisponível.', err); });
 }
+
 function saveDB(){
+  // Always save locally first (fast, works offline).
   try{ localStorage.setItem(DB_KEY, JSON.stringify(DB)); }
-  catch(e){ console.warn('Não foi possível salvar — neste preview de teste, os dados não persistem entre sessões. No arquivo baixado e aberto localmente, isso funciona normalmente.', e); }
+  catch(e){ console.warn('Não foi possível salvar localmente.', e); }
+
+  if(applyingRemoteUpdate) return; // avoid feedback loop while applying a snapshot
+  if(!familyCode || !fbReady || !window.FirebaseBridge) return;
+
+  // Debounce cloud writes slightly so rapid taps don't spam Firestore.
+  clearTimeout(saveDebounceTimer);
+  saveDebounceTimer = setTimeout(async ()=>{
+    try{
+      const { doc, setDoc, db } = window.FirebaseBridge;
+      const ref = doc(db, 'families', familyCode);
+      await setDoc(ref, DB);
+    }catch(e){ console.warn('Não foi possível sincronizar com a nuvem agora. Os dados continuam salvos neste aparelho.', e); }
+  }, 400);
 }
+
+function showSyncIndicator(){
+  showToast('Dados atualizados (sincronizado)');
+}
+
 function uid(){ return Date.now().toString(36)+Math.random().toString(36).slice(2,7); }
 function todayStr(){ const d=new Date(); return d.toISOString().slice(0,10); }
 function fmtDate(s){
@@ -1388,9 +1559,10 @@ let urineMedChoices = {}; // { medId: 'taken' | 'skipped' }
 let pinMode = 'enter'; // 'setup' | 'confirm' | 'enter' | 'change-old' | 'change-new'
 let pinTemp = '';
 
-function initLock(){
-  loadDB();
-  if(!DB.pin){
+async function initLock(){
+  await loadDB();
+  const localPin = getLocalPin();
+  if(!localPin){
     pinMode = 'setup';
     document.getElementById('lockSub').textContent = 'Crie um PIN de 4 dígitos para proteger os dados da criança';
     document.getElementById('lockNote').textContent = '';
@@ -1401,6 +1573,13 @@ function initLock(){
   document.querySelectorAll('.pin-key').forEach(k=>{
     k.addEventListener('click', ()=> handleKey(k.dataset.k));
   });
+}
+
+function getLocalPin(){
+  try{ return localStorage.getItem(PIN_KEY); }catch(e){ return null; }
+}
+function setLocalPin(pin){
+  try{ localStorage.setItem(PIN_KEY, pin); }catch(e){}
 }
 
 function handleKey(k){
@@ -1435,8 +1614,7 @@ function processPin(){
   }
   if(pinMode === 'confirm'){
     if(pinBuffer === pinTemp){
-      DB.pin = pinBuffer;
-      saveDB();
+      setLocalPin(pinBuffer);
       unlockApp();
     } else {
       document.getElementById('lockError').textContent = 'Os PINs não coincidem. Tente de novo.';
@@ -1448,7 +1626,7 @@ function processPin(){
     return;
   }
   if(pinMode === 'enter'){
-    if(pinBuffer === DB.pin){
+    if(pinBuffer === getLocalPin()){
       unlockApp();
     } else {
       document.getElementById('lockError').textContent = 'PIN incorreto';
@@ -1458,7 +1636,7 @@ function processPin(){
     return;
   }
   if(pinMode === 'change-old'){
-    if(pinBuffer === DB.pin){
+    if(pinBuffer === getLocalPin()){
       pinBuffer=''; renderDots();
       pinMode = 'change-new';
       document.getElementById('lockSub').textContent = 'Digite o novo PIN';
@@ -1478,8 +1656,7 @@ function processPin(){
   }
   if(pinMode === 'change-confirm'){
     if(pinBuffer === pinTemp){
-      DB.pin = pinBuffer;
-      saveDB();
+      setLocalPin(pinBuffer);
       showToast('PIN alterado com sucesso');
       unlockApp();
     } else {
@@ -2144,12 +2321,11 @@ function importData(e){
   reader.readAsText(file);
 }
 function confirmClearData(){
-  if(confirm('Isso vai apagar TODOS os registros (urina, sintomas, peso, medicações e avaliações de consulta) salvos neste navegador. Esta ação não pode ser desfeita. Deseja exportar um backup antes?')){
+  if(confirm('Isso vai apagar TODOS os registros (urina, sintomas, peso, medicações e avaliações de consulta) — inclusive os sincronizados na nuvem para toda a família. Esta ação não pode ser desfeita. Deseja exportar um backup antes?')){
     exportData();
   }
   if(confirm('Confirma apagar todos os dados agora?')){
-    const pin = DB.pin;
-    DB = { pin, profile:{name:'',dob:'',dx:'ssns'}, protocol:{urine:'',acid:'',time:'',note:''}, urine:[], symptoms:[], weights:[], meds:[], clinic:[] };
+    DB = { profile:{name:'',dob:'',dx:'ssns',photo:''}, protocol:{urine:'',acid:'',time:'',note:''}, treatmentPhase:'none', urine:[], symptoms:[], weights:[], meds:[], clinic:[] };
     saveDB();
     showToast('Dados apagados');
     renderAll();
@@ -2233,6 +2409,8 @@ function renderAll(){
   document.getElementById('settingsName').value = DB.profile.name||'';
   document.getElementById('settingsDob').value = DB.profile.dob||'';
   document.getElementById('settingsDx').value = DB.profile.dx||'ssns';
+  const familyDisplay = document.getElementById('familyCodeDisplay');
+  if(familyDisplay) familyDisplay.textContent = familyCode || 'não configurado';
 }
 
 function renderHeader(){
@@ -2881,7 +3059,7 @@ function toggleEdu(i){
 }
 
 /* ===================== INIT ===================== */
-initLock();
+initFamilyGate();
 </script>
 </body>
 </html>
